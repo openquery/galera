@@ -501,26 +501,34 @@ static void process_query_write_set(
           goto retry;
         }
 
+	/* release total order */
+	gcs_to_release(to_queue, seqno_l);
+
         /* register committed transaction */
         if (!rcode) {
             wsdb_set_global_trx_committed(seqno_g);
         } else {
-            gu_warn("could not apply trx: %llu", seqno_l);
+            gu_fatal("could not apply trx: %llu", seqno_l);
+	    abort();
 	}
 	break;
     case WSDB_CERTIFICATION_FAIL:
         /* certification failed, release */
         gu_warn("trx certification failed: %llu - %llu", seqno_l, ws->last_seen_trx);
         print_ws(wslog_G, ws, seqno_l);
+	/* release total order */
+	gcs_to_release(to_queue, seqno_l);
         break;
     default:  
         gu_error(
             "unknown galera fail: %d trdx: %llu",rcode,seqno_l
 	    );
+	abort();
         break;
     }
-    /* release total order */
-    gcs_to_release(to_queue, seqno_l);
+
+    wsdb_delete_global_trx(seqno_g);
+
     galera_log(111, "handled ws for: %llu", seqno_g);
     
     return;
@@ -695,14 +703,16 @@ enum galera_status galera_committed(trx_id_t trx_id) {
      */
 
     {
+#if 0
       gcs_seqno_t seqno_l = wsdb_get_local_trx_seqno(trx_id);
-      wsdb_set_local_trx_committed(trx_id);
-      wsdb_delete_local_trx_info(trx_id);
       galera_log(333,"galera_committed: %llu", seqno_l);
       if (seqno_l > 0 && gcs_to_release(to_queue, seqno_l)) {
 	  gu_fatal("to release failed for %llu", seqno_l);
 	  abort();
       }
+#endif /* 0 */
+      wsdb_set_local_trx_committed(trx_id);
+      wsdb_delete_local_trx_info(trx_id);
     }
     GU_DBUG_RETURN(GALERA_OK);
 }
@@ -715,13 +725,15 @@ enum galera_status galera_rolledback(trx_id_t trx_id) {
     GU_DBUG_PRINT("galera", ("trx: %llu", trx_id));
 
     {
+#if 0
 	gcs_seqno_t seqno_l = wsdb_get_local_trx_seqno(trx_id);
-	wsdb_delete_local_trx_info(trx_id);
 	gu_info("galera_rolledback: %llu", seqno_l);
 	if ((seqno_l > 0  && seqno_l < GALERA_ABORT_SEQNO) 
 	    && gcs_to_release(to_queue, seqno_l)) {
 	    gu_warn("to release failed for %llu", seqno_l);
 	}
+#endif 
+	wsdb_delete_local_trx_info(trx_id);
     }
     GU_DBUG_RETURN(GALERA_OK);
 }
@@ -806,6 +818,7 @@ enum galera_status galera_commit(trx_id_t trx_id, conn_id_t conn_id) {
 
 	/* Call self cancel to allow gcs_to_release() to skip this seqno */
 	gcs_to_self_cancel(to_queue, seqno_l);
+	gcs_to_release(to_queue, seqno_l);
 	GU_DBUG_RETURN(GALERA_TRX_FAIL);
     }
     
@@ -846,8 +859,11 @@ enum galera_status galera_commit(trx_id_t trx_id, conn_id_t conn_id) {
         gu_warn("wsdb append failed: seqno_g %llu seqno_l %llu", seqno_g, seqno_l);
         break;
     }
-    
+
 after_cert_test:
+    if (seqno_l > 0 && gcs_to_release(to_queue, seqno_l)) {
+	gu_warn("to release failed for %llu", seqno_l);
+    }
     wsdb_write_set_free(ws);
     GU_DBUG_RETURN(retcode);
 }

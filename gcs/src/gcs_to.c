@@ -140,6 +140,12 @@ int gcs_to_grab (gcs_to_t* to, gcs_seqno_t seqno)
 	gu_fatal("Mutex lock failed (%d): %s", err, strerror(err));
 	abort();
     }
+
+    if (seqno < to->seqno) {
+	gu_mutex_unlock(&to->lock);
+	return -ECANCELED;
+    }
+
     w = to_get_waiter (to, seqno);
 
 
@@ -238,13 +244,11 @@ int gcs_to_cancel (gcs_to_t *to, gcs_seqno_t seqno)
 	if (err) 
 	    gu_warn("gu_cond_signal failed: %d", err);
     } else if (seqno == to->seqno) {
-	gu_fatal("tried to cancel holder: state %d seqno %llu",
+	gu_warn("tried to cancel holder: state %d seqno %llu",
 		 w->state, seqno);
-	abort();
     } else {
-	gu_fatal("trying to cancel used seqno: state %d cancel seqno = %llu, "
-		 "TO seqno = %llu", w->state, seqno, to->seqno);
-	abort();
+	gu_warn("trying to cancel used seqno: state %d cancel seqno = %llu, "
+		"TO seqno = %llu", w->state, seqno, to->seqno);
     }
     
     gu_mutex_unlock (&to->lock);
