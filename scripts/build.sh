@@ -3,16 +3,31 @@
 # Fail if any command fails
 set -e
 
-
+have_ccache="false"
+#if test -n "`which ccache`"
+#then
+#    have_ccache="true"
+#    if test -n "`which distcc`"
+#    then
+#	export CCACHE_PREFIX="distcc"
+#	export MAKE="make -j6"
+#	export DISTCC_HOSTS="192.168.2.1 192.168.2.2 192.168.2.3"
+#    fi
+#    export CC="ccache gcc"
+#    export CXX="ccache g++"
+#
+#fi
 
 initial_stage="scratch"
+last_stage="mysql"
 gainroot=""
 
 usage()
 {
     echo -e "Usage: build.sh [OPTIONS] \n" \
-	"Options: \n"                  \
-        "    --stage <initial stage> \n"
+	"Options:                      \n" \
+        "    --stage <initial stage>   \n" \
+	"    --last-stage <last stage> \n"
 
 }
 
@@ -21,6 +36,10 @@ do
     case $1 in 
 	--stage)
 	    initial_stage=$2
+	    shift
+	    ;;
+	--last-stage)
+	    last_stage=$2
 	    shift
 	    ;;
 	--gainroot)
@@ -47,10 +66,10 @@ set -x
 build_base=`pwd`
 
 # Define branches to be used
-galerautils_branch=$build_base/galerautils/trunk
-galeracomm_branch=$build_base/galeracomm/trunk
-gcs_branch=$build_base/gcs/trunk
-wsdb_branch=$build_base/wsdb/trunk
+galerautils_branch=$build_base/trunk/galerautils
+galeracomm_branch=$build_base/trunk/galeracomm
+gcs_branch=$build_base/trunk/gcs
+wsdb_branch=$build_base/trunk/wsdb
 mysql_branch=$build_base/../5.1/trunk
 
 # Create build directory if it does not exist
@@ -107,6 +126,10 @@ building="false"
 if test $initial_stage = "scratch"
 then
     rm -rf
+    if test $have_ccache = "true"
+    then
+	ccache -C
+    fi
     building="true"
 fi
 
@@ -140,6 +163,11 @@ then
     svn export --force $wsdb_branch wsdb
     build wsdb $conf_flags $galera_flags
     building="true"
+fi
+
+if test $last_stage != "mysql"
+then
+    exit 0
 fi
 
 if test $initial_stage = "mysql" || $building = "true"
