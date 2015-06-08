@@ -25,6 +25,7 @@ addons:
       - g++-5
 
 script:
+  - free -m
   - if [ ${CC} != "clang" ]; then
       MEM=$(head -n 1 /proc/meminfo); RAM=(${MEM// / });
       MAX_JOBS=$(( ${RAM[1]} / 393216 )); echo Max jobs\:\ $MAX_JOBS;
